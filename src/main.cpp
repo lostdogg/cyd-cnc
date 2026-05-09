@@ -317,7 +317,7 @@ void drawStaticUi() {
   gfx->setTextColor(kMutedText, 0x0841);
   gfx->setTextSize(1);
   gfx->setCursor(114, 8);
-  gfx->print("DMG-Mori-inspired GRBL control");
+  gfx->print("DMG Mori-inspired GRBL control");
 
   gfx->fillRoundRect(8, 32, 190, 138, 6, kPanel);
   gfx->drawRoundRect(8, 32, 190, 138, 6, kPanelOutline);
@@ -555,7 +555,7 @@ void configureBacklight() {
   ledcWrite(0, 220);
 }
 
-void initialiseGrbl() {
+void initializeGrbl() {
   grblSerial.begin(kGrblBaud, SERIAL_8N1, kGrblRxPin, kGrblTxPin);
   delay(50);
   grblSerial.print("\r\n\r\n");
@@ -577,7 +577,7 @@ void setup() {
   drawStaticUi();
   drawDynamicUi(true);
 
-  initialiseGrbl();
+  initializeGrbl();
   drawDynamicUi(true);
 }
 

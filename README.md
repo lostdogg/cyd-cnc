@@ -7,7 +7,7 @@ ESP32-2432S028 ("Cheap Yellow Display") firmware for driving a GRBL-based deskto
 ## What is included
 
 - A PlatformIO firmware project for the ESP32-2432S028
-- A DMG-Mori-inspired operator screen with:
+- A DMG Mori-inspired operator screen with:
   - GRBL status display
   - X/Y/Z work position readout
   - touch jogging
