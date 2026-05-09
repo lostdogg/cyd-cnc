@@ -43,6 +43,8 @@ constexpr uint32_t kStatusPollMs = 250;
 constexpr uint32_t kRedrawMs = 150;
 constexpr uint32_t kTouchDebounceMs = 220;
 constexpr float kFloatEpsilon = 0.001F;
+constexpr int kJogFeedRate = 500;
+constexpr int kDefaultSpindleSpeed = 10000;
 
 enum class Action : uint8_t {
   None,
@@ -94,8 +96,8 @@ struct MachineState {
 struct UiCache {
   String status;
   float wpos[3] = {NAN, NAN, NAN};
-  int feed = INT32_MIN;
-  int spindleSpeed = INT32_MIN;
+  int feed = -1;
+  int spindleSpeed = -1;
   bool spindleEnabled = false;
   bool coolantEnabled = false;
   String lastMessage;
@@ -103,8 +105,9 @@ struct UiCache {
 
 SPIClass hspi(HSPI);
 HardwareSerial grblSerial(2);
-Arduino_DataBus *bus = new Arduino_ESP32SPI(kTftDc, kTftCs, kTftSclk, kTftMosi, kTftMiso, HSPI);
-Arduino_GFX *gfx = new Arduino_ILI9341(bus, kTftRst, kRotation, false);
+Arduino_ESP32SPI displayBus(kTftDc, kTftCs, kTftSclk, kTftMosi, kTftMiso, HSPI);
+Arduino_ILI9341 display(&displayBus, kTftRst, kRotation, false);
+Arduino_GFX *gfx = &display;
 XPT2046_Touchscreen touch(kTouchCs, kTouchIrq);
 MachineState state;
 
@@ -141,14 +144,7 @@ String formatAxis(float value) {
   return String(buffer);
 }
 
-bool isApproximately(float left, float right, float epsilon = kFloatEpsilon) {
-  return fabsf(left - right) < epsilon;
-}
-
-String normalizeStatusText(String value) {
-  value.toUpperCase();
-  return value;
-}
+bool isApproximately(float left, float right, float epsilon = kFloatEpsilon) { return fabsf(left - right) < epsilon; }
 
 float extractCoordinate(const String &token, uint8_t index) {
   int start = token.indexOf(':');
@@ -188,7 +184,7 @@ void sendRealtime(uint8_t command) {
 
 void sendJog(char axis, float distanceMm) {
   char buffer[48];
-  snprintf(buffer, sizeof(buffer), "$J=G91 G21 %c%.3f F500", axis, distanceMm);
+  snprintf(buffer, sizeof(buffer), "$J=G91 G21 %c%.3f F%d", axis, distanceMm, kJogFeedRate);
   sendLine(buffer);
 }
 
@@ -204,13 +200,15 @@ void parseStatusMessage(const String &line) {
     tokenEnd = payload.length();
   }
 
-  state.status = normalizeStatusText(payload.substring(0, tokenEnd));
+  state.status = payload.substring(0, tokenEnd);
+  state.status.toUpperCase();
   state.connected = true;
 
   float workOffset[3] = {0.0F, 0.0F, 0.0F};
   bool hasMpos = false;
   bool hasWpos = false;
   bool hasWco = false;
+  bool hasAccessories = false;
 
   while (tokenStart < payload.length()) {
     tokenEnd = payload.indexOf('|', tokenStart);
@@ -237,7 +235,11 @@ void parseStatusMessage(const String &line) {
     } else if (token.startsWith("FS:")) {
       state.feed = extractInt(token, 0);
       state.spindleSpeed = extractInt(token, 1);
-      state.spindleEnabled = state.spindleSpeed > 0;
+    } else if (token.startsWith("A:")) {
+      const String accessories = token.substring(2);
+      state.spindleEnabled = accessories.indexOf('S') >= 0 || accessories.indexOf('C') >= 0;
+      state.coolantEnabled = accessories.indexOf('F') >= 0 || accessories.indexOf('M') >= 0;
+      hasAccessories = true;
     }
 
     tokenStart = tokenEnd + 1;
@@ -247,6 +249,10 @@ void parseStatusMessage(const String &line) {
     for (uint8_t i = 0; i < 3; ++i) {
       state.wpos[i] = state.mpos[i] - (hasWco ? workOffset[i] : 0.0F);
     }
+  }
+
+  if (!hasAccessories && state.spindleSpeed == 0) {
+    state.spindleEnabled = false;
   }
 }
 
@@ -380,7 +386,7 @@ void drawDynamicUi(bool force = false) {
   }
 
   for (uint8_t i = 0; i < 3; ++i) {
-    if (force || uiCache.wpos[i] != state.wpos[i]) {
+    if (force || !isApproximately(uiCache.wpos[i], state.wpos[i])) {
       const String label = i == 0 ? "X" : (i == 1 ? "Y" : "Z");
       drawValueRow(76 + (i * 28), label.c_str(), formatAxis(state.wpos[i]));
       uiCache.wpos[i] = state.wpos[i];
@@ -513,9 +519,11 @@ void performAction(Action action) {
         state.spindleEnabled = false;
         state.spindleSpeed = 0;
       } else {
-        sendLine("M3 S10000");
+        char spindleCommand[16];
+        snprintf(spindleCommand, sizeof(spindleCommand), "M3 S%d", kDefaultSpindleSpeed);
+        sendLine(spindleCommand);
         state.spindleEnabled = true;
-        state.spindleSpeed = 10000;
+        state.spindleSpeed = kDefaultSpindleSpeed;
       }
       break;
     case Action::CoolantToggle:

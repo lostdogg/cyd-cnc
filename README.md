@@ -15,7 +15,7 @@ ESP32-2432S028 ("Cheap Yellow Display") firmware for driving a GRBL-based deskto
   - spindle and coolant toggles
   - work zero shortcuts
 
-> Note: this project intentionally uses an original industrial-style layout instead of copying DMG Mori branding or an exact copyrighted screen design.
+> Note: this project borrows from the industrial control aesthetic associated with machines such as DMG Mori equipment, but it does not copy DMG Mori branding or proprietary screen designs.
 
 ## Hardware target
 
@@ -41,9 +41,8 @@ GRBL serial defaults:
 - ESP32 TX2 (to GRBL RX): GPIO 17
 - Baud: `115200`
 
-## Important electrical note
-
-Many GRBL boards expose 5V TTL serial. The ESP32 is a 3.3V device. Use a proper level-shifted connection or verify that your controller board's UART pins are 3.3V-safe before wiring the CYD directly.
+> [!WARNING]
+> Do **not** connect a 5V TTL GRBL UART directly to ESP32 GPIO pins unless the controller is explicitly 3.3V-safe. A direct 5V serial connection can permanently damage the ESP32. Use a level shifter or verify the controller's electrical levels first.
 
 ## Flash instructions
 
