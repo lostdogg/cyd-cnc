@@ -3,6 +3,7 @@
 #include <SPI.h>
 #include <XPT2046_Touchscreen.h>
 #include <cmath>
+#include <esp_arduino_version.h>
 
 namespace {
 
@@ -146,6 +147,8 @@ String formatAxis(float value) {
 
 bool isApproximately(float left, float right, float epsilon = kFloatEpsilon) { return fabsf(left - right) < epsilon; }
 
+bool isValidAxis(char axis) { return axis == 'X' || axis == 'Y' || axis == 'Z'; }
+
 float extractCoordinate(const String &token, uint8_t index) {
   int start = token.indexOf(':');
   if (start < 0) {
@@ -183,6 +186,10 @@ void sendRealtime(uint8_t command) {
 }
 
 void sendJog(char axis, float distanceMm) {
+  if (!isValidAxis(axis)) {
+    return;
+  }
+
   char buffer[48];
   snprintf(buffer, sizeof(buffer), "$J=G91 G21 %c%.3f F%d", axis, distanceMm, kJogFeedRate);
   sendLine(buffer);
@@ -564,9 +571,14 @@ void handleTouch() {
 }
 
 void configureBacklight() {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcAttachChannel(kBacklightPin, 12000, 8, 0);
+  ledcWrite(kBacklightPin, 220);
+#else
   ledcSetup(0, 12000, 8);
   ledcAttachPin(kBacklightPin, 0);
   ledcWrite(0, 220);
+#endif
 }
 
 void initializeGrbl() {
