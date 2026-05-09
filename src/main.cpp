@@ -42,6 +42,7 @@ constexpr uint16_t kDRO = 0x17FF;
 constexpr uint32_t kStatusPollMs = 250;
 constexpr uint32_t kRedrawMs = 150;
 constexpr uint32_t kTouchDebounceMs = 220;
+constexpr float kFloatEpsilon = 0.001F;
 
 enum class Action : uint8_t {
   None,
@@ -136,8 +137,17 @@ constexpr Button kButtons[] = {
 
 String formatAxis(float value) {
   char buffer[16];
-  snprintf(buffer, sizeof(buffer), "%7.3f", static_cast<double>(value));
+  snprintf(buffer, sizeof(buffer), "%7.3f", value);
   return String(buffer);
+}
+
+bool isApproximately(float left, float right, float epsilon = kFloatEpsilon) {
+  return fabsf(left - right) < epsilon;
+}
+
+String normalizeStatusText(String value) {
+  value.toUpperCase();
+  return value;
 }
 
 float extractCoordinate(const String &token, uint8_t index) {
@@ -178,7 +188,7 @@ void sendRealtime(uint8_t command) {
 
 void sendJog(char axis, float distanceMm) {
   char buffer[48];
-  snprintf(buffer, sizeof(buffer), "$J=G91 G21 %c%.3f F500", axis, static_cast<double>(distanceMm));
+  snprintf(buffer, sizeof(buffer), "$J=G91 G21 %c%.3f F500", axis, distanceMm);
   sendLine(buffer);
 }
 
@@ -194,7 +204,7 @@ void parseStatusMessage(const String &line) {
     tokenEnd = payload.length();
   }
 
-  state.status = payload.substring(0, tokenEnd);
+  state.status = normalizeStatusText(payload.substring(0, tokenEnd));
   state.connected = true;
 
   float workOffset[3] = {0.0F, 0.0F, 0.0F};
@@ -284,11 +294,11 @@ void pollGrbl() {
 void drawButton(const Button &button) {
   bool isActive = false;
   if (button.action == Action::Step001) {
-    isActive = fabsf(jogStepMm - 0.01F) < 0.001F;
+    isActive = isApproximately(jogStepMm, 0.01F);
   } else if (button.action == Action::Step010) {
-    isActive = fabsf(jogStepMm - 0.1F) < 0.001F;
+    isActive = isApproximately(jogStepMm, 0.1F);
   } else if (button.action == Action::Step100) {
-    isActive = fabsf(jogStepMm - 1.0F) < 0.001F;
+    isActive = isApproximately(jogStepMm, 1.0F);
   } else if (button.action == Action::SpindleToggle) {
     isActive = state.spindleEnabled;
   } else if (button.action == Action::CoolantToggle) {
@@ -360,10 +370,9 @@ void drawDynamicUi(bool force = false) {
   if (force || uiCache.status != state.status) {
     gfx->fillRect(12, 52, 180, 18, kPanel);
     gfx->setTextSize(2);
-    const bool isRunning = state.status.equalsIgnoreCase("run") || state.status.equalsIgnoreCase("jog");
-    const bool isFaulted = state.status.equalsIgnoreCase("alarm") || state.status.equalsIgnoreCase("error");
-    const uint16_t statusColor =
-        isFaulted ? kNegative : (isRunning ? kWarning : kPositive);
+    const bool isRunning = state.status == "RUN" || state.status == "JOG";
+    const bool isFaulted = state.status == "ALARM" || state.status == "ERROR";
+    const uint16_t statusColor = isFaulted ? kNegative : (isRunning ? kWarning : kPositive);
     gfx->setTextColor(statusColor, kPanel);
     gfx->setCursor(14, 54);
     gfx->print(state.status);
@@ -522,10 +531,7 @@ void performAction(Action action) {
   }
 
   for (const Button &button : kButtons) {
-    if (button.action == action || button.action == Action::SpindleToggle || button.action == Action::CoolantToggle ||
-        button.action == Action::Step001 || button.action == Action::Step010 || button.action == Action::Step100) {
-      drawButton(button);
-    }
+    drawButton(button);
   }
   drawDynamicUi(true);
 }
